@@ -14,6 +14,12 @@ jobs:
       - name: Build
         run: |
           ./README.md
+          mkdir -p run1 run2
+          ( cd run1; ../build/dolpo1 -x <../README.md )
+          diff -u build/dolpo1 run1/dolpo1
+          ( cd run2; ../run1/dolpo1 -x <../README.md )
+          diff -u build/dolpo1 run1/dolpo1
+          diff -u build/dolpo1 run2/dolpo1
       - name: Upload
         uses: actions/upload-artifact@v6
         with:

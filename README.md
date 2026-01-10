@@ -7,6 +7,7 @@
 ```sh
 set -eu
 export SCRIPT="$(realpath "$0")"
+export DO_RUN=1
 
 # Put the extracted files into their own directory
 mkdir -p build; cd build
@@ -133,11 +134,10 @@ output. We can call this initial block the "preamble", and we also use it
 to export the environment variable `SCRIPT` to point to the source file,
 for later use.
 
-### Bootstrapping Code
+### Tangling Blocks
 
-We are now ready for the bootstrapping code, which will be enough for
-the initial implementation. Note, that all the scissor markered blocks
-end up being joined together.
+We are now ready for the implementation. Note, that all the scissor
+markered blocks end up being joined together.
 
 First, let's define the state. A reset function allows us to reset it
 at various points, such as at the start and after a literate block also.
@@ -188,25 +188,66 @@ Note that we are using `next` because we only want to match on one line at
 a time, e.g. to avoid the code block start line being output into the file
 
 Inside block quotes, we use code blocks to provide syntax
-highlighting. The bootstrapping code only supports exactly three
-backticks, which is a subset of CommonMark.
-
-For run blocks, we only execute at the end, to support multi-line
-constructs.
+highlighting. The current code only supports exactly three backticks,
+which is a subset of CommonMark.  We track wether we are in a block using
+`ON`, which is set to the current line number (always greater than zero
+so true).
 
 ```awk
 # ----------------------------------8<----------------------------------
-/^> `{3}/ {
-    if (ON && RUN && RUN != 0) {
-        code = system(RUN)
-        if (code != 0) {
-            exit code
-        }
-    }
-    ON=!ON;
+/^> `{3}/ && !ON {
+    ON=NR;
     next;
 }
+# ---------------------------------->8----------------------------------
+```
+
+We also support not executing code blocks (default) but
+printing them first.
+
+```awk
 # ----------------------------------8<----------------------------------
+function do_run_block() {
+    if (ENVIRON["DO_RUN"]) {
+        code = system(RUN)
+        if (code != 0) {
+            print "Error in Run block line " (ON + 1) " to " NR;
+            split(RUN, lines, RS);
+            for (i in lines) {
+                printf "%-7d %s\n", (ON + i), lines[i]
+            }
+            exit code;
+        }
+    } else {
+        print "Code to run:"
+        split(RUN, lines, RS);
+        for (i in lines) {
+            print "     " lines[i]
+        }
+    }
+    RUN=1;
+}
+# ---------------------------------->8----------------------------------
+```
+
+On a closing block, we do some tidying, such as closing the file (so that
+e.g. run blocks can also append to it and then we don't overwrite that
+because we haven't seeked to the end). For run blocks, we only execute
+at the end, to support multi-line constructs.
+
+```awk
+# ----------------------------------8<----------------------------------
+/^> `{3}/ && ON {
+    if (RUN && RUN != 0) {
+        do_run_block();
+    }
+    if (FILE) {
+        close(FILE)
+    }
+    ON=0;
+    next;
+}
+# ---------------------------------->8----------------------------------
 ```
 
 Now all that's left is outputting the file contents, or stashing run
@@ -235,9 +276,37 @@ reset on anything else, because that's going to be an end of block quote.
 Probably unsurprisingly, this file itself is executable, and when run,
 it builds DoLPo.
 
-We can make the bootstrapping code be version one of DoLPo. Note, in
-run blocks we use the exported `SCRIPT` environment variable from ,
-rather than `$0` which is going to be the shell of `system(RUN)`.
+We can make the this code be version one of DoLPo. First we need some
+wrappers around the awk script, as well as a little argument parsing.
+
+> File `dolpo1`
+> ```sh
+> #!/bin/sh
+>
+> DO_RUN=0
+> FILES=/dev/stdin
+>
+> while [ $# -gt 0 ]; do
+>     case "$1" in
+>         (-x|--execute) DO_RUN=1 ;;
+>         (--) break ;;
+>     esac
+>     shift
+> done
+> if [ $# -gt 0 ]; then
+>     FILES="$@"
+> fi
+>
+> export DO_RUN
+>
+> for file in $FILES; do
+>     export SCRIPT="$file"
+>     awk '
+> ```
+
+Next, we insert the scissor blocks from this file.  Note, in run blocks
+we use the exported `SCRIPT` environment variable from , rather than
+`$0` which is going to be the shell of `system(RUN)`.
 
 > Run
 >
@@ -245,4 +314,12 @@ rather than `$0` which is going to be the shell of `system(RUN)`.
 > sed -n -E <"$SCRIPT" '/-{34}8<-{34}/,/-{34}>8-{34}/p' >> dolpo1
 > chmod +x dolpo1
 > ln -sf dolpo1 dolpo
+> ```
+
+And we mustn't forget about the closing quote.
+
+> File `dolpo1` continued
+> ```sh
+> '
+> done
 > ```
