@@ -12,7 +12,7 @@ export SCRIPT="$(realpath "$0")"
 mkdir -p build; cd build
 
 # Extract scissor block at the end and run it
-sed -n -E <"$SCRIPT" '/-{34}8<-{34}/,/-{34}8<-{34}/p' |
+sed -n -E <"$SCRIPT" '/-{34}8<-{34}/,/-{34}>8-{34}/p' |
     awk -f - "$SCRIPT"
 exit
 ```
@@ -120,11 +120,12 @@ We can now implement all of it in the header as shell, but we end up
 with a lot of text, wouldn't it be better to put most of it at the end,
 to avoid polluting the source code, as well as the rendered document?
 
-Of course we can, we have a handle onto the script file as `$0`, so we can
-just filter it. We can filter for the scissor markers easily using `sed`.
+Of course we can, we have a handle onto the script file as `$0`, so we
+can just filter it. We can filter for the scissor markers easily using
+`sed`. And we can even aid users by using matching scissors `8<` and `>8`.
 
 ```sh
-sed -n -E <"$0" '/-{34}8<-{34}/,/-{34}8<-{34}/p'
+sed -n -E <"$0" '/-{34}8<-{34}/,/-{34}>8-{34}/p'
 ```
 
 This selects all scissored ranges and outputs it to the standard
@@ -151,7 +152,7 @@ function reset() {
 }
 
 BEGIN { reset(); }
-# ----------------------------------8<----------------------------------
+# ---------------------------------->8----------------------------------
 ```
 
 We want to detect when we start needing to care, the format of DoLPo
@@ -180,7 +181,7 @@ a file, "File `name` continued" to continue/append, or "Run" to execute
     next;
 }
 
-# ----------------------------------8<----------------------------------
+# ---------------------------------->8----------------------------------
 ```
 
 Note that we are using `next` because we only want to match on one line at
@@ -228,7 +229,7 @@ reset on anything else, because that's going to be an end of block quote.
 /^> ?/ { next; }
 /^>/ { print "Error on line " NR; exit 1; }
 { reset(); }
-# ----------------------------------8<----------------------------------
+# ---------------------------------->8----------------------------------
 ```
 
 Probably unsurprisingly, this file itself is executable, and when run,
@@ -241,7 +242,7 @@ rather than `$0` which is going to be the shell of `system(RUN)`.
 > Run
 >
 > ```sh
-> sed -n -E <"$SCRIPT" '/-{34}8<-{34}/,/-{34}8<-{34}/p' > dolpo1
+> sed -n -E <"$SCRIPT" '/-{34}8<-{34}/,/-{34}>8-{34}/p' >> dolpo1
 > chmod +x dolpo1
 > ln -sf dolpo1 dolpo
 > ```
