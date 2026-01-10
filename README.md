@@ -51,8 +51,8 @@ My immediate thought was frontmatter. But that isn't part of CommonMark.
 ### Silent Entrance
 
 The trickier side to the thought experiment is how do you make a shell
-(bash, busybox sh) script which is mostly ignored? The solution is
-comments, of course. There are a few ways to have non-executing code in
+(bash, busybox sh) script which can be mostly non-shell text? The solution
+is comments, of course. There are a few ways to have non-executing code in
 shell, actual comments `# like so (until the end of the line)`, no-effect
 commands such as `: colon until the semicolon;`, which have the limitation
 that the text in between needs to not contain parentheses, dollar signs
@@ -67,6 +67,7 @@ for example:
 You can put pretty much anything here, except from "EOF" without quotes
 on its own line.
 EOF
+# Back to shell
 ```
 
 Note, the quoting of the here document means we don't have any expansion
@@ -88,27 +89,42 @@ one is probably the HTML comment `<!--` and `-->` pairs. But a sneaky
 trick is using link reference definitions, and then not using them.
 
 ```md
-[some text]: link-target "optional title"
+[some text for the label]: link-target "optional title"
 ```
 
-So we can combine the here document with a link reference defintion,
-meaning we can hide the start of the here document, and just have the
-text (or comment the text using HTML comments). So we are almost there
-with the start, the last trick is making the here document terminator
-be the start of a code block.
+We can combine this link reference definition with the start of the
+here-document, if we are careful: shell has a command which is written
+`[`, used for conditional testing (and also accessible as `test`). It
+needs to be its own word (i.e. separated by spaces or semicolons from
+surrounding text) and needs to be closed by `]`, also its own word.
+To not error, it also needs some text inside.
+
+On the other hand, markdown link definitions need to be terminated by `]:`
+and have a link target. Fortunately, the link label can contain spaces,
+and angle brackets. And the link target can be just `]`, so we have
+something that is not visible and allows us to write anything after it.
+
+For extra niceness, we use ` ```sh ` as the here document terminator,
+so we get shell syntax highlighting when the shell starts interpreting
+commands again.
 
 ~~~md
 [ <<'```sh' ]: ]
 
+Rendered markdown text (if you want).
+
 <!--
 
-Text goes `here`
+Non-rendered markdown, and also not shell, so just prose for humans.
 
 ```sh
-# Shell code (with syntax highlighting) goes here. Though probably not
-# in the rendered document as this is a doubly-nested markdown block.
+# Shell code (with syntax highlighting) goes here. Though probably not in
+# this very block, as this block is nested inside anothed code block. But
+# in normal cases it wouldn't be nested, so would be syntax highlighted.
 exit
 ```
+
+More optional non-rendered prose, if you prefer.
 
 -->
 
@@ -130,9 +146,13 @@ sed -n -E <"$0" '/-{34}8<-{34}/,/-{34}>8-{34}/p'
 ```
 
 This selects all scissored ranges and outputs it to the standard
-output. We can call this initial block the "preamble", and we also use it
-to export the environment variable `SCRIPT` to point to the source file,
-for later use.
+output. Which we can then pipe to awk (or other implementation language
+of your choice.
+
+We can call this initial block the "preamble", and we also use it to
+export the environment variable `SCRIPT` to point to the source file,
+for later use. This is important, as `$0` won't refer to the script
+inside awk, but we may still want to have a handle onto the script.
 
 ### Tangling Blocks
 
@@ -203,7 +223,7 @@ so true).
 ```
 
 We also support not executing code blocks (default) but
-printing them first.
+printing them instead.
 
 ```awk
 # ----------------------------------8<----------------------------------
@@ -230,9 +250,10 @@ function do_run_block() {
 # ---------------------------------->8----------------------------------
 ```
 
-On a closing block, we do some tidying, such as closing the file (so that
-e.g. run blocks can also append to it and then we don't overwrite that
-because we haven't seeked to the end). For run blocks, we only execute
+On a closing block, we do some tidying, such as closing the file (awk
+specific, the `print > file` and `print >> file` commands open the file
+once, then keep the position, but we want other blocks e.g. run blocks
+to also be able to write to the file). For run blocks, we only execute
 at the end, to support multi-line constructs.
 
 ```awk
@@ -305,8 +326,8 @@ wrappers around the awk script, as well as a little argument parsing.
 > ```
 
 Next, we insert the scissor blocks from this file.  Note, in run blocks
-we use the exported `SCRIPT` environment variable from , rather than
-`$0` which is going to be the shell of `system(RUN)`.
+we use the exported `SCRIPT` environment variable from the preamble,
+rather than `$0` which is going to be the shell of `system(RUN)`.
 
 > Run
 >
@@ -316,7 +337,7 @@ we use the exported `SCRIPT` environment variable from , rather than
 > ln -sf dolpo1 dolpo
 > ```
 
-And we mustn't forget about the closing quote.
+And we mustn't forget about the closing quote and terminate the file loop.
 
 > File `dolpo1` continued
 > ```sh
